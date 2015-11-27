@@ -73,11 +73,19 @@ reg		            wr, rd;
 
 reg [dwidth   -1:0] q;
 
+always @(negedge rst) begin
+	if (!rst) begin
+		adr  = {awidth{1'bz}};
+		dout = {dwidth{1'bz}};
+		wr  = 1'b0;
+		rd  = 1'b0; 
+	end
+end
 ////////////////////////////////////////////////////////////////////
 //
 // Memory Logic
 //
-
+/*
 initial
 	begin
 		//adr = 32'hxxxx_xxxx;
@@ -89,7 +97,7 @@ initial
 		#1;
 		$display("\nINFO: SPI MASTER MODEL INSTANTIATED (%m)\n");
 	end
-
+*/
 ////////////////////////////////////////////////////////////////////
 //
 // Wishbone write cycle
@@ -97,7 +105,7 @@ initial
 
 task wb_write;
 	input   delay;
-	integer delay;
+	//integer delay;
 
 	input	[awidth -1:0]	a;
 	input	[dwidth -1:0]	d;
@@ -127,7 +135,7 @@ endtask
 
 task wb_read;
 	input   delay;
-	integer delay;
+	//integer delay;
 
 	input	 [awidth -1:0]	a;
 	output	[dwidth -1:0]	d;
