@@ -244,7 +244,7 @@ always @(posedge i_ck or negedge i_rstn) begin
 		if (scl_reg == 8'b01111111) begin
 			if (i2c_state == DEVICE_ADDR || i2c_state == REG_ADDR || i2c_state == REG_WR_DATA) begin			
 				in_data <= {in_data[6:0], SDA};
-				bits_cnt = bits_cnt + 1'b1;
+				bits_cnt <= bits_cnt + 1'b1;
 			
 				if (bits_cnt == 4'h8) begin
 					indat_done <= 1'b1;
