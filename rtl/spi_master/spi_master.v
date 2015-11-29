@@ -23,7 +23,7 @@ output reg[7:0] o_data;
 input i_wr;
 input i_rd;
 
-parameter CLK_CNT = 8'd40;// i_ck 100M, spi clk = 2.5M
+parameter CLK_CYCLE = 8'd40;// i_ck 100M, spi clk = 2.5M
 
 //address 1 slave_reg_data_o[0], address 2 slave_reg_data_o[1]
 reg [7:0] slave_reg_data_o;//device's reg's address
@@ -54,8 +54,8 @@ reg [7:0] temp_addr;
 reg [7:0] temp_data;
 reg [7:0] temp_rx_data;
 reg change_state;
-reg clr_spi_ctrl;
-reg clear_change_state;
+//reg clr_spi_ctrl;
+//reg clear_change_state;
 
 always @(negedge i_rstn or posedge i_ck) begin
 	if (!i_rstn) begin
@@ -88,13 +88,13 @@ always @(negedge i_rstn or posedge i_ck) begin
 			end
 			4'b0000:
 			begin
-				if (clr_spi_ctrl)
+				if (spi_state == S_WAIT_STOP)
 					o_data <= {spi_ctrl[7:1], 1'b1};
 				else
 					o_data <= spi_ctrl;
 			end			
 			endcase
-		end else if (clr_spi_ctrl)
+		end else if (change_state && (spi_state == S_WAIT_STOP || spi_state == S_STOP))
 			spi_ctrl <= {spi_ctrl[7:1], 1'b0};
 		else begin
 			o_data <= 8'bzzzzzzzz;
@@ -106,7 +106,7 @@ always @(negedge i_rstn or posedge i_ck) begin
 	if (!i_rstn) begin
 		clk_cnt <= 8'h0;
 	end else if (spi_state == S_TX_ADDR || spi_state == S_TX_DATA || spi_state == S_WAIT_STOP)begin
-		if (clk_cnt == CLK_CNT) begin
+		if (clk_cnt == CLK_CYCLE) begin
 			clk_cnt <= 8'h0;
 		end else
 			clk_cnt <= clk_cnt + 1'b1;
@@ -116,7 +116,7 @@ always @(negedge i_rstn or posedge i_ck) begin
 end
 
 
-always @(i_rstn or spi_state or clk_cnt or clear_change_state) begin
+always @(negedge i_rstn or posedge i_ck) begin
 	if (!i_rstn) begin
 		o_csn <= 1'b1;
 		o_sclk <= 1'b1;
@@ -126,12 +126,10 @@ always @(i_rstn or spi_state or clk_cnt or clear_change_state) begin
 		temp_data <= 8'h0;
 		temp_rx_data <= 8'h0;
 		change_state <= 1'b0;
-		clr_spi_ctrl = 1'b0;
+		//clr_spi_ctrl <= 1'b0;
 		slave_reg_data_i <= 8'h0;
 	end else begin
-		case (spi_state)
-		S_IDLE:
-		begin
+		if (spi_state == S_IDLE) begin
 			o_csn <= 1'b1;
 			o_sclk <= 1'b1;
 			o_mosi <= 1'b0;
@@ -140,10 +138,8 @@ always @(i_rstn or spi_state or clk_cnt or clear_change_state) begin
 			temp_data <= 8'h0;
 			temp_rx_data <= 8'h0;
 			change_state <= 1'b0;
-			clr_spi_ctrl = 1'b0;
-		end
-		S_START:
-		begin
+			//clr_spi_ctrl <= 1'b0;
+		end else if (spi_state == S_START) begin
 			o_csn <= 1'b0;
 			if (!spi_ctrl[3]) begin
 				temp_addr <= slave_reg_addr_o;
@@ -155,62 +151,54 @@ always @(i_rstn or spi_state or clk_cnt or clear_change_state) begin
 				              slave_reg_data_o[4],slave_reg_data_o[5],slave_reg_data_o[6],slave_reg_data_o[7]};			
 			end
 			change_state <= 1'b1;
-		end
-		S_TX_ADDR:
-		begin
-			if (clear_change_state)
-				change_state <= 1'b0;
-			if (clk_cnt == CLK_CNT/2) begin
+		end else if (spi_state == S_TX_ADDR) begin
+			change_state <= 1'b0;
+			if (clk_cnt == CLK_CYCLE/2) begin
 				o_mosi <= temp_addr[5'h7 -  bit_cnt];
 				o_sclk <= 1'b0;
-				bit_cnt = bit_cnt + 1'b1;
+				bit_cnt <= bit_cnt + 1'b1;
 
-			end else if (clk_cnt == CLK_CNT) begin
+			end else if (clk_cnt == CLK_CYCLE) begin
 				if (bit_cnt == 5'h8) begin
 					bit_cnt <= 5'h0;
 					change_state <= 1'b1;
 				end			
 				o_sclk <= 1'b1;
 			end
-		end
-		S_TX_DATA:
-		begin
-			if (clear_change_state)
-				change_state <= 1'b0;
-			if (clk_cnt == CLK_CNT/2) begin
+		end else if (spi_state == S_TX_DATA) begin
+			change_state <= 1'b0;
+			if (clk_cnt == CLK_CYCLE/2) begin
 				o_mosi <= temp_data[5'h7 -  bit_cnt];
 				o_sclk <= 1'b0;
-				bit_cnt = bit_cnt + 1'b1;
+				bit_cnt <= bit_cnt + 1'b1;
+			end else if (clk_cnt == CLK_CYCLE) begin
+				temp_rx_data <= {temp_rx_data[6:0], i_miso};
+				o_sclk <= 1'b1;
 				if (bit_cnt == 5'h8) begin
 					bit_cnt <= 5'h0;
 					change_state <= 1'b1;
 				end
-			end else if (clk_cnt == CLK_CNT) begin
-				temp_rx_data <= {temp_rx_data[6:0], i_miso};
-				o_sclk <= 1'b1;
 			end
-		end
-		S_WAIT_STOP:
-		begin
-			if (clear_change_state)
-				change_state <= 1'b0;
-			if (clk_cnt == CLK_CNT) begin
-				temp_rx_data <= {temp_rx_data[6:0], i_miso};//laster recv bit
-				o_sclk <= 1'b1;
-			end else if (clk_cnt == (CLK_CNT/2 - 1)) begin
+		end else if (spi_state == S_WAIT_STOP) begin
+			//change_state <= 1'b0;
+			//if (clk_cnt == CLK_CYCLE) begin
+			//	temp_rx_data <= {temp_rx_data[6:0], i_miso};//laster recv bit
+			//	o_sclk <= 1'b1;
+			//end else if (clk_cnt == (CLK_CYCLE/2)) begin
 				o_csn <= 1'b1;
 				change_state <= 1'b1;
 				//spi_ctrl[0] <= 1'b0;//spi tx finished
-				clr_spi_ctrl = 1'b1;//clear spi start flag
+				//clr_spi_ctrl <= 1'b1;//clear spi start flag
 				if (!spi_ctrl[3]) begin
 					slave_reg_data_i <= temp_rx_data;
 				end else begin
 					slave_reg_data_i <= {temp_rx_data[0],temp_rx_data[1],temp_rx_data[2],temp_rx_data[3],
 												temp_rx_data[4],temp_rx_data[5],temp_rx_data[6],temp_rx_data[7]};
 				end				
-			end
+			//end
+		end else begin
+			change_state <= 1'b0;
 		end
-		endcase
 	end
 end
 
@@ -224,61 +212,48 @@ always @(i_rstn or spi_next_state) begin
 end
 */
 
-always @(i_rstn or spi_state or spi_ctrl[0] or change_state) begin
+always @(negedge i_rstn or negedge i_ck) begin
 	if (!i_rstn) begin
 		spi_state <= S_IDLE;
-		//spi_next_state <= S_IDLE;
-		clear_change_state <= 1'b0;
 	end else begin
 		case (spi_state)
 		S_IDLE:
 		begin
-			if (!clr_spi_ctrl && spi_ctrl[0])
+			if (spi_ctrl[0])
 				spi_state <= S_START;
 			else
 				spi_state <= S_IDLE;
-			clear_change_state <= 1'b0;
 		end
 		
 		S_START:
 		begin
 			if (change_state) begin
 				spi_state <= S_TX_ADDR;
-				clear_change_state <= 1'b1;
 		   end else begin
 				spi_state <= S_START;
 			end
 		end
 		S_TX_ADDR:
 		begin
-			if (!clear_change_state && change_state) begin
+			if (change_state) begin
 				spi_state <= S_TX_DATA;
-				clear_change_state <= 1'b1;
 			end else begin
-				if (clear_change_state && !change_state)
-					clear_change_state <= 1'b0;
 				spi_state <= S_TX_ADDR;
 			end
 		end
 		S_TX_DATA:
 		begin
-			if (!clear_change_state && change_state) begin
+			if (change_state) begin
 				spi_state <= S_WAIT_STOP;
-				clear_change_state <= 1'b1;
 			end else begin
-				if (clear_change_state && !change_state)
-					clear_change_state <= 1'b0;
 				spi_state <= S_TX_DATA;
 			end	
 		end			
 		S_WAIT_STOP:
 		begin
-			if (!clear_change_state && change_state) begin
+			if (change_state) begin
 				spi_state <= S_STOP;
-				clear_change_state <= 1'b1;
-			end else begin
-				if (clear_change_state && !change_state)
-					clear_change_state <= 1'b0;			
+			end else begin			
 				spi_state <= S_WAIT_STOP;
 			end
 		end
