@@ -18,12 +18,15 @@ output reg o_sclk;
 input i_miso;
 output reg o_mosi;
 input [3:0] i_address;
-input  [7:0] i_data;
-output reg[7:0] o_data;
+input  [7:0] i_data; 
+output [7:0] o_data;
+reg [7:0] o_data;
 input i_wr;
 input i_rd;
 
 parameter CLK_CYCLE = 8'd40;// i_ck 100M, spi clk = 2.5M
+
+//reg [7:0] temp_out;
 
 //address 1 slave_reg_data_o[0], address 2 slave_reg_data_o[1]
 reg [7:0] slave_reg_data_o;//device's reg's address
@@ -56,6 +59,18 @@ reg [7:0] temp_rx_data;
 reg change_state;
 //reg clr_spi_ctrl;
 //reg clear_change_state;
+reg spi_start;
+wire spi_start_rise;
+always @(negedge i_rstn or negedge i_ck) begin
+	if (!i_rstn)
+		spi_start <= 1'b0;
+	else begin
+		spi_start <= spi_ctrl[0];
+	end
+end
+
+assign spi_start_rise = spi_ctrl[0] && ~spi_start;
+//assign o_data = temp_out;
 
 always @(negedge i_rstn or posedge i_ck) begin
 	if (!i_rstn) begin
@@ -88,17 +103,14 @@ always @(negedge i_rstn or posedge i_ck) begin
 			end
 			4'b0000:
 			begin
-				if (spi_state == S_WAIT_STOP)
+				if (spi_state == S_WAIT_STOP || spi_state == S_STOP)
 					o_data <= {spi_ctrl[7:1], 1'b1};
 				else
 					o_data <= spi_ctrl;
 			end			
 			endcase
-		end else if (change_state && (spi_state == S_WAIT_STOP || spi_state == S_STOP))
+		end else if (spi_state == S_STOP)
 			spi_ctrl <= {spi_ctrl[7:1], 1'b0};
-		else begin
-			o_data <= 8'bzzzzzzzz;
-		end 
 	end
 end
 
@@ -180,12 +192,12 @@ always @(negedge i_rstn or posedge i_ck) begin
 				end
 			end
 		end else if (spi_state == S_WAIT_STOP) begin
-			//change_state <= 1'b0;
+			change_state <= 1'b0;
 			//if (clk_cnt == CLK_CYCLE) begin
 			//	temp_rx_data <= {temp_rx_data[6:0], i_miso};//laster recv bit
 			//	o_sclk <= 1'b1;
 			//end else if (clk_cnt == (CLK_CYCLE/2)) begin
-				o_csn <= 1'b1;
+			if (clk_cnt == (CLK_CYCLE/2)) begin
 				change_state <= 1'b1;
 				//spi_ctrl[0] <= 1'b0;//spi tx finished
 				//clr_spi_ctrl <= 1'b1;//clear spi start flag
@@ -195,8 +207,9 @@ always @(negedge i_rstn or posedge i_ck) begin
 					slave_reg_data_i <= {temp_rx_data[0],temp_rx_data[1],temp_rx_data[2],temp_rx_data[3],
 												temp_rx_data[4],temp_rx_data[5],temp_rx_data[6],temp_rx_data[7]};
 				end				
-			//end
+			end
 		end else begin
+			o_csn <= 1'b1;
 			change_state <= 1'b0;
 		end
 	end
@@ -219,7 +232,7 @@ always @(negedge i_rstn or negedge i_ck) begin
 		case (spi_state)
 		S_IDLE:
 		begin
-			if (spi_ctrl[0])
+			if (spi_start_rise)
 				spi_state <= S_START;
 			else
 				spi_state <= S_IDLE;
@@ -259,8 +272,10 @@ always @(negedge i_rstn or negedge i_ck) begin
 		end
 		S_STOP:
 		begin
-			if (!spi_ctrl[0]) // wait spi start bit been clear
-				spi_state <= S_IDLE;
+			//if (!spi_ctrl[0]) // wait spi start bit been clear
+			spi_state <= S_IDLE;
+			//else
+			//	spi_state <= S_STOP;
 		end
 		endcase
 	end

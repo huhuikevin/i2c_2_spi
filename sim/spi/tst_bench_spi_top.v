@@ -113,7 +113,7 @@ module tst_bench_spi_top();
 		.rd(rd)
 	);
 
-	spi_master #(20) u1 (
+	spi_master #(40) u1 (
 		.i_ck(clk),
 		.i_rstn(rstn),
 		.o_sclk(sclk),
@@ -152,8 +152,27 @@ module tst_bench_spi_top();
 	      // program internal registers
 	      //u0.wb_write(1, PRER_LO, 8'hfa); // load prescaler lo-byte
 	      u0.wb_write(1, SPI_ADDR_REG, 8'h80); // load prescaler lo-byte
-	      u0.wb_write(1, SPI_TX_REG, 8'h77); // load prescaler hi-byte
-	      $display("status: %t programmed registers", $time);
+		  $display("status: %t programmed spi addr registers %x", $time, 8'h80);
+	      u0.wb_write(1, SPI_TX_REG, 8'h3c); // load prescaler hi-byte
+	      $display("status: %t programmed spi tx registers %x", $time, 8'h3c);
+
+	      u0.wb_write(1, SPI_CTRL_REG, 8'h09); // enable core
+	      $display("status: %t core enabled", $time);
+
+
+		  u0.wb_read(1, SPI_CTRL_REG, q);
+		  $display("SPI_CTRL_REG: %t received %x .", $time, q);
+		  while(q[0])
+			u0.wb_read(1, SPI_CTRL_REG, q);
+	      // check data just received
+	      u0.wb_read(1, SPI_RX_REG, qq);
+
+	      $display("status: %t received %x .", $time, qq);
+
+		  $display("status: %t start spi next .", $time);
+	      u0.wb_write(1, SPI_ADDR_REG, 8'h80); // load prescaler lo-byte
+	      u0.wb_write(1, SPI_TX_REG, 8'h88); // load prescaler hi-byte
+	       $display("status: %t programmed spi tx registers %x", $time, 8'h88);
 
 	      u0.wb_write(1, SPI_CTRL_REG, 8'h01); // enable core
 	      $display("status: %t core enabled", $time);
@@ -167,7 +186,8 @@ module tst_bench_spi_top();
 	      u0.wb_read(1, SPI_RX_REG, qq);
 
 	      $display("status: %t received %x .", $time, qq);
-
+		  
+		  
 		  
 	      #250000; // wait 250us
 	      $display("\n\nstatus: %t Testbench done", $time);

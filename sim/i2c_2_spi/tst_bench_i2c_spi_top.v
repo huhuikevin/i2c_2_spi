@@ -88,7 +88,7 @@ module tst_bench_i2c_spi_top();
 	wire ack;
 	wire inta;
 
-	reg [7:0] q, qq, qqq;
+	reg [7:0] q, qq, qqq, temp;
 
 	wire scl, scl_o, scl_oen;
 	wire sda, sda_o, sda_oen;
@@ -109,7 +109,7 @@ module tst_bench_i2c_spi_top();
 	wire spi_wr;
 	wire spi_rd;	
 	
-	reg miso;
+	wire miso;
 	wire sclk, mosi, scs;
 		
 	//////////////////////////////
@@ -152,7 +152,7 @@ module tst_bench_i2c_spi_top();
 	always #5 clk = ~clk;
 	always #500 clk2 = ~clk2;
 	
-	always @(mosi) miso <= mosi;
+	assign miso = mosi;
 
 	// hookup wishbone master model
 	wb_master_model #(8, 32) u0 (
@@ -196,68 +196,17 @@ module tst_bench_i2c_spi_top();
 	);
 
 ////////////////////////////////////////////////////////////////////
-	// hookup i2c slave module
-	i2c_slave #(SADR) myslave(
-		.i_ck(clk),
-		.i_rstn(rstn),
-		.SDA(sda),
-		.SCL(scl),
-		.sram_odata(out),
-		.sram_idata(in),
-		.sram_addr(addr),
-		.sram_rw(RW),
-		.sram_cs(EN)		
-	);
-
-	// hookup register file (sram) module
-	dram myRAM_0(
-		.i_rstn(rstn),
-		.i_ck(clk),		
-		.o_data(out),
-		.i_address(addr),
-		.i_rw(RW),
-		.i_csn(EN),
-		.i_data(in),
-		
-		.o_data2(out2),
-		.i_address2(addr2),
-		.i_rw2(RW2),
-		.i_csn2(EN2),
-		.i_data2(in2)		
-	);
+ i2c_2_spi i2cspi(
+	.i_ck(clk),
+	.i_rstn(rstn),
+	.i_i2c_clk(scl),
+	.io_i2c_dat(sda),
 	
-    dram_bus2 dbus2(
-		.i_rstn(rstn),
-		.i_ck(clk),		
-		.o_data(in2),
-		.o_address(addr2),
-		.o_rw(RW2),
-		.o_csn(EN2),
-		.i_data(out2)
-	);
-	spi_master_model #(8, 4) spi (
-		.clk(clk),
-		.rst(rstn),
-		.adr(spi_adr),
-		.din(spi_dat_i),
-		.dout(spi_dat_o),
-		.wr(spi_wr),
-		.rd(spi_rd)
-	);
-
-	spi_master #(40) u1 (
-		.i_ck(clk),
-		.i_rstn(rstn),
-		.o_sclk(sclk),
-		.o_csn(scs),
-		.i_miso(miso),
-		.o_mosi(mosi),
-		.i_address(spi_adr),
-		.i_data(spi_dat_o),
-		.o_data(spi_dat_i),
-		.i_wr(spi_wr),
-		.i_rd(spi_rd)
-	);	
+	.o_spi_clk(sclk),
+	.o_spi_csn(scs),
+	.o_spi_mosi(mosi),
+	.i_spi_miso(miso)
+);
 ////////////////////////////////////////////////////////////////////
 
 	// create i2c tri-state line
@@ -266,55 +215,7 @@ module tst_bench_i2c_spi_top();
 
 	pullup p1(scl); // pullup scl line
 	pullup p2(sda); // pullup sda line
-    always
-		begin
-		    #10000
-			$display("\nstatus: %t spi model start\n\n", $time);
-			dbus2.dram_read(1, SRAM_SPI_CTRL, qqq);
-			while(!qqq[0])
-				dbus2.dram_read(1, SRAM_SPI_CTRL, qqq);
-			$display("\nstatus: %t spi send start\n\n", $time);
-			
-			dbus2.dram_read(1, SRAM_SPI_ADDR, qqq);
-			spi.wb_write(1, SPI_ADDR_REG, qqq);
-			$display("\nstatus: %t spi write addr %x\n\n", $time, qqq);
-			
-			dbus2.dram_read(1, SRAM_SPI_TXD, qqq);
-			spi.wb_write(1, SPI_TX_REG, qqq);
-			$display("\nstatus: %t spi write data %x\n\n", $time, qqq);
-			
-			spi.wb_write(1, SPI_CTRL_REG, 8'h01); // enable core
-			
-			spi.wb_read(1, SPI_CTRL_REG, qqq);
-		    $display("SPI_CTRL_REG: %t received %x .", $time, qqq);
-		    while(qqq[0])
-			    spi.wb_read(1, SPI_CTRL_REG, qqq);
 
-			spi.wb_read(1, SPI_RX_REG, qqq);
-			$display("SPI_CTRL_REG: %t received RX %x .", $time, qqq);
-				
-			spi.wb_write(1, SPI_ADDR_REG, SPI_REG_ADDR);
-			spi.wb_write(1, SPI_TX_REG, SPI_REG_DUMMY);
-			spi.wb_write(1, SPI_CTRL_REG, 8'h01); // enable core
-			
-			spi.wb_read(1, SPI_CTRL_REG, qqq);
-		    $display("SPI_CTRL_REG: %t next received %x .", $time, qqq);
-		    while(qqq[0])
-			    spi.wb_read(1, SPI_CTRL_REG, qqq);
-			
-			spi.wb_read(1, SPI_RX_REG, qqq);
-			$display("SPI_CTRL_REG: %t next received RX %x .", $time, qqq);
-			
-			dbus2.dram_write(1, SRAM_SPI_RXD, qqq);
-			qqq = 8'h0;
-			
-			dbus2.dram_read(1, SRAM_SPI_RXD, qqq);
-			$display("SPI_CTRL_REG: %t read sram %x .", $time, qqq);
-
-			#250000; // wait 250us
-			$display("\n\nstatus: %t Testbench done", $time);
-			$stop;
-		end
 	initial
 	  begin
 	      $display("\nstatus: %t Testbench started\n\n", $time);
@@ -322,7 +223,7 @@ module tst_bench_i2c_spi_top();
 	      // initially values
 	      clk = 0;
 	      clk2 = 0;
-		  miso = 0;
+		  //miso = 0;
 	      // reset system
 	      rstn = 1'b1; // negate reset
 	      #100;
@@ -357,15 +258,40 @@ module tst_bench_i2c_spi_top();
 
 		  
 		  wirte_i2c(2, SADR, SRAM_SPI_ADDR, SPI_REG_ADDR, SPI_REG_DATA);//send spi slave address and data
-		  wirte_i2c(1, SADR, SRAM_SPI_CTRL, 8'h1, SPI_REG_DUMMY);   // send spi ctrl to start spi send
-	      $display("status: %t tip==0", $time);
+		  wirte_i2c(1, SADR, SRAM_SPI_CTRL, 8'h01, SPI_REG_DUMMY);   // send spi ctrl to start spi send
 		  
-		  dbus2.dram_read(1, SRAM_SPI_ADDR, qq);
-		  $display("read dram : %t data=%x", $time, qq);
-		  //dbus2.dram_write(1, 4'h3, 8'h9a);
-		  dbus2.dram_read(1, SRAM_SPI_TXD, qq);
-		  $display("read dram : %t data=%x", $time, qq);
-
+		  
+	      //$display("status: %t tip==0", $time);
+		    #10000
+			$display("\nstatus: %t spi model start\n\n", $time);
+			read_i2c(1, SADR, SRAM_SPI_CTRL, qqq);
+			$display("\nstatus: %t read spi ctrl %x\n\n", $time, qqq);
+			while(qqq[0])
+				read_i2c(1, SADR, SRAM_SPI_CTRL, qqq);
+			
+			read_i2c(1, SADR, SRAM_SPI_RXD, qqq);
+			$display("\nstatus: %t read spi rx data %x\n\n", $time, qqq);	
+			
+			
+			
+			
+		  wirte_i2c(2, SADR, SRAM_SPI_ADDR, SPI_REG_ADDR, 8'h99);//send spi slave address and data
+		  wirte_i2c(1, SADR, SRAM_SPI_CTRL, 8'h01, SPI_REG_DUMMY);   // send spi ctrl to start spi send
+		  
+		  
+	      //$display("status: %t tip==0", $time);
+		    #10000
+			$display("\nstatus: %t spi model start\n\n", $time);
+			read_i2c(1, SADR, SRAM_SPI_CTRL, qqq);
+			$display("\nstatus: %t read spi ctrl %x\n\n", $time, qqq);
+			while(qqq[0])
+				read_i2c(1, SADR, SRAM_SPI_CTRL, qqq);
+			
+			read_i2c(1, SADR, SRAM_SPI_RXD, qqq);
+			$display("\nstatus: %t read spi rx data %x\n\n", $time, qqq);				
+			#250000; // wait 250us
+			$display("\n\nstatus: %t Testbench done", $time);
+			$stop;		 
 	      //$stop;
 	  end
 
@@ -390,7 +316,7 @@ input [7:0] data2;
 	      u0.wb_read(1, SR, q);
 	      while(q[1])
 	           u0.wb_read(0, SR, q); // poll it until it is zero
-	      $display("status: %t tip==0", $time);
+	      //$display("status: %t tip==0", $time);
 
 	      // send memory address
 	      u0.wb_write(1, TXR,     addr); // present slave's memory address
@@ -401,18 +327,21 @@ input [7:0] data2;
 	      u0.wb_read(1, SR, q);
 	      while(q[1])
 	           u0.wb_read(0, SR, q); // poll it until it is zero
-	      $display("status: %t tip==0", $time);
+	      //$display("status: %t tip==0", $time);
 
 	      // send memory contents
 	      u0.wb_write(1, TXR,     data); // present data
-	      u0.wb_write(0, CR,      8'h10); // set command (write)
+		  if (dnum == 2)
+			u0.wb_write(0, CR,      8'h10); // set command (write)
+		  else
+		    u0.wb_write(0, CR,      8'h50); // set command (stop, write)
 	      $display("status: %t write data %x", $time, data);
 
 	      // check tip bit
 	      u0.wb_read(1, SR, q);
 	      while(q[1])
 	           u0.wb_read(1, SR, q); // poll it until it is zero
-	      $display("status: %t tip==0", $time);
+	      //$display("status: %t tip==0", $time);
 		if (dnum == 2) begin
 	      // send memory contents for next memory address (auto_inc)
 	      u0.wb_write(1, TXR,     data2); // present data
@@ -423,10 +352,73 @@ input [7:0] data2;
 	      u0.wb_read(1, SR, q);
 	      while(q[1])
 	           u0.wb_read(1, SR, q); // poll it until it is zero
-	      $display("status: %t tip==0", $time);
+	      $display("status: %t send i2c data ok", $time);
 		end
 	end
-endtask	  
+endtask	
+
+
+task read_i2c;
+input   dnum;
+integer dnum;
+input [6:0] device_id;
+input [7:0] addr;
+output [7:0] data;
+
+	begin
+	      /////////////////////////////////////////////
+	      // access slave (read)
+	      /////////////////////////////////////////////
+
+	      // drive slave address
+	      u0.wb_write(1, TXR,{SADR,WR} ); // present slave address, set write-bit
+	      u0.wb_write(0, CR,     8'h90 ); // set command (start, write)
+	      $display("status: %t generate 'start', write cmd %0h (slave address+write)", $time, {SADR,WR} );
+
+	      // check tip bit
+	      u0.wb_read(1, SR, q);
+	      while(q[1])
+	           u0.wb_read(1, SR, q); // poll it until it is zero
+	      $display("status: %t tip==0", $time);
+
+	      // send memory address
+	      u0.wb_write(1, TXR,     addr); // present slave's memory address
+	      u0.wb_write(0, CR,      8'h10); // set command (write)
+	      $display("status: %t write slave address 01", $time);
+
+	      // check tip bit
+	      u0.wb_read(1, SR, q);
+	      while(q[1])
+	           u0.wb_read(1, SR, q); // poll it until it is zero
+	      $display("status: %t tip==0", $time);
+
+	      // drive slave address
+	      u0.wb_write(1, TXR, {SADR,RD} ); // present slave's address, set read-bit
+	      u0.wb_write(0, CR,      8'h90 ); // set command (start, write)
+	      $display("status: %t generate 'repeated start', write cmd %0h (slave address+read)", $time, {SADR,RD} );
+
+	      // check tip bit
+	      u0.wb_read(1, SR, q);
+	      while(q[1])
+	           u0.wb_read(1, SR, q); // poll it until it is zero
+	      $display("status: %t tip==0", $time);
+
+	      // read data from slave
+	      u0.wb_write(1, CR,      8'h28); // set command (read, ack_read)
+	      $display("status: %t read + ack", $time);
+
+	      // check tip bit
+	      u0.wb_read(1, SR, q);
+	      while(q[1])
+	           u0.wb_read(1, SR, q); // poll it until it is zero
+	      $display("status: %t tip==0", $time);
+
+	      // check data just received
+	      u0.wb_read(1, RXR, temp);
+	      $display("status: %t received %x .", $time, temp);
+		data = temp;
+	end
+endtask
 ////////////////////////////////////////////////////////////////////
 	specify
 	  specparam normal_scl_low  = 4700,

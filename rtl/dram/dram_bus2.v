@@ -28,7 +28,7 @@ always @(negedge i_rstn) begin
 	o_data <= {dwidth{1'bz}};
 end
 
-task dram_write;
+task automatic dram_write;
 	input   delay;
 	//integer delay;
 
@@ -53,7 +53,7 @@ task dram_write;
 	end
 endtask
 
-task dram_read;
+task automatic dram_read;
 	input   delay;
 	//integer delay;
 

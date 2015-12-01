@@ -243,19 +243,18 @@ always @(posedge i_ck or negedge i_rstn) begin
 	end else begin
 		if (scl_reg == 8'b01111111) begin
 			if (i2c_state == DEVICE_ADDR || i2c_state == REG_ADDR || i2c_state == REG_WR_DATA) begin			
-				in_data <= {in_data[6:0], SDA};
+				indat_done <= 1'b0;
 				bits_cnt <= bits_cnt + 1'b1;
-			
-				if (bits_cnt == 4'h8) begin
-					indat_done <= 1'b1;
-					bits_cnt <= 4'h0;
-				end else
-					indat_done <= 1'b0;
+				in_data <= {in_data[6:0], SDA};	
 			end else if (i2c_state == MASTER_ACK) begin
 				in_data[0] <= SDA;
 				indat_done <= 1'b1;
 				bits_cnt <= 4'h0;
 			end
+		end
+		if (bits_cnt == 4'h8) begin
+			indat_done <= 1'b1;
+			bits_cnt <= 4'h0;
 		end
 		if (i2c_state == IDLE || i2c_state == START || i2c_state == REG_RD_DATA 
 				|| i2c_state == ACK_ADDRESS || i2c_state == ACK_REGADDR || i2c_state == ACK_REG_WRITE) begin 
@@ -402,7 +401,8 @@ always @(posedge i_ck or negedge i_rstn) begin
 		SENDWAIT:
 		begin
 			if (scl_reg == 8'b11111110) begin
-				sda_out_en <= 1'b0;
+				if (!(device_read && i2c_state == ACK_ADDRESS))
+					sda_out_en <= 1'b0;
 				send_done <= 1'b1;
 				sda_state<= RECVING;
 			end else begin
